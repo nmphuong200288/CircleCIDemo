@@ -1,29 +1,23 @@
 version: 2.1
-orbs:
-  aws-cli: circleci/aws-cli@3.1.5
+
+# Define the jobs we want to run for this project
 jobs:
-  aws-example:
-    environment:
-     AWS_REGION: ap-northeast-2
+  build:
     docker:
-      - image: cimg/aws:2022.06
+      - image: cimg/base:2023.03
     steps:
       - checkout
-      # run the aws-cli/setup command from the orb
-      - aws-cli/setup:
-          role-arn: "arn:aws:iam::592393202920:role/MyOIDCRole"
-          aws-region: AWS_REGION
-          # optional parameters
-          profile-name: "MyOIDCRole"
-          role-session-name: "example-session"
-          session-duration: "1800"
-      - run:
-        name: Log-into-AWS-ECR
-        command: |
-          # must use same profile specified in the step above
-          aws ecr get-login-password --profile "MyOIDCRole"
+      - run: echo "this is the build job"
+  test:
+    docker:
+      - image: cimg/base:2023.03
+    steps:
+      - checkout
+      - run: echo "this is the test job"
+
+# Orchestrate our job run sequence
 workflows:
-  OIDC-with-AWS:
+  build_and_test:
     jobs:
-      - aws-example:
-          context: aws
+      - build
+      - test
