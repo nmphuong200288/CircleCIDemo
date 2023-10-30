@@ -1,22 +1,31 @@
-version: '2.1'
+version: 2.1
+
 orbs:
-  docker: circleci/docker@2.4.0
+  aws-cli: circleci/aws-cli@3.1.5
+
 jobs:
-  build-and-push:
-    executor: docker/docker
+  aws-example:
+   environment:
+      AWS_REGION: ap-northeast-2
+    docker:
+      - image: cimg/aws:2022.06
     steps:
-      - setup_remote_docker
       - checkout
-      - docker/check
-      - docker/build:
-          image: my_repo/orb-test
-      - docker/push:
-          digest-path: /tmp/digest.txt
-          image: my_repo/orb-test
+      # run the aws-cli/setup command from the orb
+      - aws-cli/setup:
+          role-arn: "arn:aws:iam::123456789012:role/OIDC-ROLE"
+          aws-region: AWS_REGION
+          # optional parameters
+          profile-name: "OIDC-PROFILE"
+          role-session-name: "example-session"
+          session-duration: "1800"
       - run:
-          command: |
-            echo "Digest is: $(</tmp/digest.txt)"
+        name: Log-into-AWS-ECR
+        command: |
+          # must use same profile specified in the step above
+          aws ecr get-login-password --profile "OIDC-PROFILE"
 workflows:
-  commit:
+  OIDC-with-AWS:
     jobs:
-      - build-and-push
+      - aws-example:
+          context: aws
