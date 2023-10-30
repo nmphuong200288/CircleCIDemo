@@ -7,7 +7,7 @@ jobs:
   build:
     working_directory: ~/mern-starter
     # Reuse Docker container specification given by the node Orb
-    executor: node/default
+    #executor: node/default
     steps:
       - checkout
       # Install the latest npm - the node Orb takes care of it
