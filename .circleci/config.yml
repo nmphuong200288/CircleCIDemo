@@ -26,4 +26,4 @@ workflows:
   OIDC-with-AWS:
     jobs:
       - aws-example:
-          #context: aws
+          context: aws
