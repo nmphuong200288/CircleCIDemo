@@ -22,8 +22,8 @@ jobs:
       - command: |
           # must use same profile specified in the step above
           aws ecr get-login-password --profile "MyOIDCRole"
-#workflows:
-  #OIDC-with-AWS:
-    #jobs:
-      #- aws-example:
+workflows:
+  OIDC-with-AWS:
+    jobs:
+      - aws-example:
           #context: aws
