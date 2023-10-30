@@ -1,11 +1,9 @@
 version: 2.1
-
 orbs:
   aws-cli: circleci/aws-cli@3.1.5
-
 jobs:
   aws-example:
-   environment:
+    environment:
       AWS_REGION: ap-northeast-2
     docker:
       - image: cimg/aws:2022.06
