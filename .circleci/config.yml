@@ -16,14 +16,14 @@ jobs:
           role-arn: "arn:aws:iam::592393202920:role/MyOIDCRole"
           aws-region: AWS_REGION
           # optional parameters
-          profile-name: "OIDC-PROFILE"
+          profile-name: "MyOIDCRole"
           role-session-name: "example-session"
           session-duration: "1800"
       - run:
         name: Log-into-AWS-ECR
         command: |
           # must use same profile specified in the step above
-          aws ecr get-login-password --profile "OIDC-PROFILE"
+          aws ecr get-login-password --profile "MyOIDCRole"
 workflows:
   OIDC-with-AWS:
     jobs:
