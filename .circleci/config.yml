@@ -1,19 +1,17 @@
-version: 2.1
-
+version: '2.1'
 orbs:
-  node: circleci/node@5.1.0
-
-jobs:
-  install-node-example:
-    docker:
-      - image: cimg/base:stable
-    steps:
-      - checkout
-      - node/install:
-          install-yarn: true
-          node-version: '16.13'
-      - run: node --version
+  docker: circleci/docker@2.4.0
 workflows:
-  test_my_app:
+  build-docker-image-only:
     jobs:
-      - install-node-example
+      - docker/publish:
+          image: $CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME
+          update-description: true
+  build-docker-image-only-with-buildkit:
+    jobs:
+      - docker/publish:
+          image: $CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME
+          remote-docker-version: 20.10.12
+          update-description: true
+          use-buildkit: true
+          use-remote-docker: true
