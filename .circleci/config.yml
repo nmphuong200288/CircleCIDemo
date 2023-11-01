@@ -40,7 +40,7 @@ jobs:
             aws configure set region $AWS_REGION
             aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
             aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+            aws ecr get-login-password --region ${AWS_REGION} | docker login --username phuongngo-ims --password-stdin ${AWS_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
             # push image to ecr
             docker tag $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_${CIRCLE_SHA1:0:7} $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}
