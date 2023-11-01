@@ -1,131 +1,148 @@
 version: 2.1
-
 orbs:
-    docker: circleci/docker@1.0.1
-
+  node: circleci/node@4.7.0
+  docker: circleci/docker@1.4.0
 jobs:
-    prepare-dependencies:
-        docker:
-            - image: node:current-alpine
-        steps:
-            - checkout
-            - run:
-                  name: Compute version number
-                  command: echo "0.0.${CIRCLE_BUILD_NUM}-${CIRCLE_SHA1:0:7}" | tee version.txt
-            - restore_cache:
-                  keys:
-                      - yarn-deps-{{ checksum "yarn.lock" }}
-                      - yarn-deps
-            - run:
-                  name: yarn install
-                  command: yarn install
-            - save_cache:
-                  paths:
-                      - node_modules
-                  key: yarn-deps-{{ checksum "yarn.lock" }}-{{ epoch }}
-            - store_artifacts:
-                  path: yarn.lock
-            - persist_to_workspace:
-                  root: .
-                  paths:
-                      - .
+  build:
+    docker: # use the docker executor type; machine and macos executors are also supported
+      - image: node:lts # the primary container, where your job's commands are run
+    executor: docker/docker
+    steps:
+      - setup_remote_docker
+      - checkout # check out the code in the project directory
+      - run:
+          name: Install Docker client
+          command: |
+            apt-get update && apt-get install -y curl
+            set -x
+            VER="20.10.17"
+            curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
+            tar -xz -C /tmp -f /tmp/docker-$VER.tgz
+            mv /tmp/docker/* /usr/bin
+      - run:
+          name: Install aws cli
+          command: |
+            apt-get update && apt-get install -y python3 python3-venv
+            python3 -m venv venv
+            . venv/bin/activate
+            pip install awscli>=1.16.30
+      - run:
+          name: Build image
+          command: |
+            docker build -t $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_${CIRCLE_SHA1:0:7} .
+      - run:
+          name: Push Docker image
+          command: |
+            # login aws
+            . venv/bin/activate
+            aws configure set region $AWS_REGION
+            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
-    build-production:
-        docker:
-            - image: node:current-alpine
-        steps:
-            - attach_workspace:
-                  at: .
-            - run:
-                  name: Production build
-                  command: |
-                      export __BUILD_VERSION="$(cat version.txt)"
-                      yarn build
-            - store_artifacts:
-                  path: dist/server.js
-            - persist_to_workspace:
-                  root: .
-                  paths:
-                      - .
-
-    build-docker-image:
-        machine:
-            # The image uses the current tag, which always points to the most recent
-            # supported release. If stability and determinism are crucial for your CI
-            # pipeline, use a release date tag with your image, e.g. ubuntu-2004:202201-02
-            image: ubuntu-2004:current
-        steps:
-            - attach_workspace:
-                  at: .
-            - run:
-                  name: Setup __BUILD_VERSION envvar
-                  command: |
-                      echo 'export __BUILD_VERSION="$(cat version.txt)"' >> "$BASH_ENV"
-            - docker/check:
-                  registry: $DOCKER_REGISTRY
-            - docker/build:
-                  image: $DOCKER_IMAGE_NAME
-                  tag: $__BUILD_VERSION
-                  registry: $DOCKER_REGISTRY
-            - docker/push:
-                  image: $DOCKER_IMAGE_NAME
-                  tag: $__BUILD_VERSION
-                  registry: $DOCKER_REGISTRY
-
-    test:
-        docker:
-            - image: node:current-alpine
-        parallelism: 2
-        steps:
-            - attach_workspace:
-                  at: .
-            - run:
-                  name: Run tests
-                  command: |
-                      circleci tests glob '**/*.test.ts' | circleci tests split --split-by timings | xargs yarn test:ci
-            - store_artifacts:
-                  path: test-results
-            - store_test_results:
-                  path: test-results
-
-    deploy-docker-image:
-        machine:
-            image: ubuntu-2004:current
-        steps:
-            - attach_workspace:
-                  at: .
-            - run:
-                  name: Setup __BUILD_VERSION envvar
-                  command: |
-                      echo 'export __BUILD_VERSION="$(cat version.txt)"' >> "$BASH_ENV"
-            - docker/check:
-                  registry: $DOCKER_REGISTRY
-            - docker/pull:
-                  images: $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:$__BUILD_VERSION
-            - run:
-                  name: Tag the image as latest
-                  command: docker tag $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:$__BUILD_VERSION $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:latest
-            - docker/push:
-                  image: $DOCKER_IMAGE_NAME
-                  tag: latest
-                  registry: $DOCKER_REGISTRY
+            # push image to ecr
+            docker tag $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_${CIRCLE_SHA1:0:7} $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}
+            docker push $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_${CIRCLE_SHA1:0:7}
+            docker push $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}
+  deploy-dev:
+    circleci_ip_ranges: true
+    executor: docker/docker
+    steps:
+      # Please add $SSH_KEY_FINGERPRINT,$DEPLOYED_USER@ and DEPLOYED_SERVER to project's environment
+      - add_ssh_keys:
+          fingerprints:
+            - '$develop_ssh_key'
+      - run:
+          name: Deploy over SSH
+          command: |
+            ssh -oStrictHostKeyChecking=no circleci@$develop_server "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com &&
+            cd /var/lib/circleci/spruce-fe/ && 
+            git pull origin ${CIRCLE_BRANCH} &&
+            docker pull $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH} &&
+            docker-compose down &&
+            docker rmi $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_latest &&
+            docker tag $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH} $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_latest &&
+            docker rmi $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH} &&  
+            IM_TAG=${CIRCLE_BRANCH} docker-compose up -d"
+  deploy-uat:
+    circleci_ip_ranges: true
+    executor: docker/docker
+    steps:
+      # Please add $SSH_KEY_FINGERPRINT,$DEPLOYED_USER@ and DEPLOYED_SERVER to project's environment
+      - add_ssh_keys:
+          fingerprints:
+            - '$uat_ssh_key'
+      - checkout # check out the code in the project directory
+      - run:
+          name: Deploy over SSH
+          command: |
+            ssh -oStrictHostKeyChecking=no circleci@$uat_server "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com &&
+            cd /var/lib/circleci/spruce-fe/ && 
+            git pull origin ${CIRCLE_BRANCH} &&
+            docker pull $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH} &&
+            docker-compose down &&
+            docker rmi $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_latest &&
+            docker tag $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH} $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_latest &&
+            docker rmi $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH} &&  
+            IM_TAG=${CIRCLE_BRANCH} docker-compose up -d"
+  deploy-production:
+    circleci_ip_ranges: true
+    executor: docker/docker
+    steps:
+      # Please add $SSH_KEY_FINGERPRINT,$DEPLOYED_USER@ and DEPLOYED_SERVER to project's environment
+      - add_ssh_keys:
+          fingerprints:
+            - '$production_ssh_key'
+      - checkout # check out the code in the project directory
+      - run:
+          name: Deploy over SSH
+          command: |
+            ssh -oStrictHostKeyChecking=no circleci@$production_server "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com &&
+            cd /var/lib/circleci/spruce-fe/ && 
+            git pull origin ${CIRCLE_BRANCH} &&
+            docker pull $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH} &&
+            docker-compose down &&
+            docker rmi $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_latest &&
+            docker tag $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH} $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_latest &&
+            docker rmi $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH} &&  
+            IM_TAG=${CIRCLE_BRANCH} docker-compose up -d"
 
 workflows:
-    build-test-deploy:
-        jobs:
-            - prepare-dependencies
-            - build-production:
-                  requires:
-                      - prepare-dependencies
-            - build-docker-image:
-                  context: docker-hub
-                  requires:
-                      - build-production
-            - test:
-                  requires:
-                      - prepare-dependencies
-            - deploy-docker-image:
-                  context: docker-hub
-                  requires:
-                      - build-docker-image
-                      - test
+  build-and-deploy:
+    jobs:
+      - build:
+          filters:
+            branches:
+              only:
+                - develop
+                - uat
+                - master
+      - deploy-dev:
+          requires:
+            - build
+          filters:
+            branches:
+              only:
+                - develop
+      - deploy-uat:
+          requires:
+            - build
+          filters:
+            branches:
+              only:
+                - uat
+      - approval:
+          type: approval
+          requires:
+            - build
+          filters:
+            branches:
+              only:
+                - master
+      - deploy-production:
+          requires:
+            - approval
+          filters:
+            branches:
+              only:
+                - master
