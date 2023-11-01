@@ -28,6 +28,10 @@ jobs:
               python3 -m venv venv
               . venv/bin/activate
               pip install awscli>=1.16.30
+      - run:
+          name: Build image
+          command: |
+            docker build -t $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_${CIRCLE_SHA1:0:7} .
 
 # Orchestrate our job run sequence
 workflows:
