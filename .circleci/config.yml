@@ -43,9 +43,9 @@ jobs:
             aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
             # push image to ecr
-            docker tag $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_${CIRCLE_SHA1:0:7} $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}
-            docker push $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_${CIRCLE_SHA1:0:7}
-            docker push $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}
+            #docker tag $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_${CIRCLE_SHA1:0:7} $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}
+            #docker push $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}_${CIRCLE_SHA1:0:7}
+            #docker push $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$AWS_REPO:${CIRCLE_BRANCH}
 
 # Orchestrate our job run sequence
 workflows:
