@@ -9,6 +9,7 @@ jobs:
     docker:
       - image: node:lts
     executor: docker/docker
+    
     steps:
       - setup_remote_docker
       - checkout
